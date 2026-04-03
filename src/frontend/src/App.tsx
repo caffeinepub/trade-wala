@@ -300,14 +300,6 @@ export default function App() {
             >
               Trading Community in India
             </p>
-            <p
-              className={`hero-desc fade-up ${visible ? "fade-up-in" : ""}`}
-              style={{ animationDelay: "0.28s" }}
-            >
-              Learn to trade Stocks, Options &amp; Futures with India&apos;s
-              most active free community — daily signals, live sessions &amp;
-              expert mentorship.
-            </p>
           </div>
         </div>
 
