@@ -51,7 +51,6 @@ const FEATURES = [
 function TradingChart() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef<number>(0);
-  const tickRef = useRef<number>(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -66,7 +65,6 @@ function TradingChart() {
     const gap = barW * 0.35;
     const bodyW = barW - gap;
 
-    // Pre-generate reproducible candle data
     type Candle = { o: number; c: number; h: number; l: number };
     const candles: Candle[] = [];
     let price = 55;
@@ -86,18 +84,24 @@ function TradingChart() {
 
     const toY = (p: number) => H - 28 - ((p - minP) / range) * (H - 44);
 
-    // Smooth line path for the "signal" line
     const linePoints = candles.map((c, i) => ({
       x: 24 + i * barW + bodyW / 2,
       y: toY((c.o + c.c) / 2),
     }));
 
-    let revealedBars = 0;
-    let lineProgress = 0; // 0..1 across all points
+    let startTime: number | null = null;
 
-    function draw(time: number) {
+    function loop(ts: number) {
+      if (startTime === null) startTime = ts;
+      let elapsed = ts - startTime;
+
+      // Restart loop after all bars + pause
+      if (elapsed > totalBars * 380 + 900) {
+        startTime = ts;
+        elapsed = 0;
+      }
+
       if (!ctx) return;
-      tickRef.current = time;
       ctx.clearRect(0, 0, W, H);
 
       // Background grid lines
@@ -111,8 +115,7 @@ function TradingChart() {
         ctx.stroke();
       }
 
-      // Animate: reveal one bar every ~22 frames (≈0.37s at 60fps)
-      revealedBars = Math.min(totalBars, Math.floor(time / 380) + 1);
+      const revealedBars = Math.min(totalBars, Math.floor(elapsed / 380) + 1);
 
       // Draw candles
       for (let i = 0; i < revealedBars; i++) {
@@ -121,7 +124,6 @@ function TradingChart() {
         const isGreen = c.c >= c.o;
         const alpha = i === revealedBars - 1 ? 0.7 : 1;
 
-        // Wick
         ctx.strokeStyle = isGreen
           ? `rgba(67,160,71,${alpha})`
           : `rgba(239,83,80,${alpha})`;
@@ -131,7 +133,6 @@ function TradingChart() {
         ctx.lineTo(x + bodyW / 2, toY(c.l));
         ctx.stroke();
 
-        // Body
         ctx.fillStyle = isGreen
           ? `rgba(67,160,71,${alpha})`
           : `rgba(239,83,80,${alpha})`;
@@ -141,15 +142,14 @@ function TradingChart() {
         ctx.fillRect(x, bodyTop, bodyW, bh);
       }
 
-      // Animate the signal line trailing behind
-      lineProgress = Math.min(1, time / (totalBars * 380));
+      // Signal line
+      const lineProgress = Math.min(1, elapsed / (totalBars * 380));
       const totalPts = linePoints.length;
       const drawUpTo = lineProgress * (totalPts - 1);
       const fullPts = Math.floor(drawUpTo);
       const frac = drawUpTo - fullPts;
 
       if (fullPts > 0) {
-        // Gradient line
         const grd = ctx.createLinearGradient(
           linePoints[0].x,
           0,
@@ -174,7 +174,6 @@ function TradingChart() {
             np.y,
           );
         }
-        // Partial segment
         if (fullPts < totalPts - 1) {
           const cp = linePoints[fullPts];
           const np = linePoints[fullPts + 1];
@@ -205,7 +204,7 @@ function TradingChart() {
                   (linePoints[fullPts + 1].y - linePoints[fullPts].y) * frac,
               }
             : linePoints[fullPts];
-        const pulse = 0.6 + 0.4 * Math.sin(time / 200);
+        const pulse = 0.6 + 0.4 * Math.sin(elapsed / 200);
         ctx.beginPath();
         ctx.arc(tipPt.x, tipPt.y, 5 * pulse, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(255,214,0,${0.5 * pulse})`;
@@ -216,29 +215,6 @@ function TradingChart() {
         ctx.fill();
       }
 
-      // Loop: restart after all bars revealed + a small pause
-      if (time > totalBars * 380 + 800) {
-        frameRef.current = requestAnimationFrame((t) =>
-          draw(t - tickRef.current - 1),
-        );
-        return;
-      }
-
-      frameRef.current = requestAnimationFrame((t) =>
-        draw(t - (time === 0 ? t : 0)),
-      );
-    }
-
-    // Use relative time so loop restarts cleanly
-    let startTime: number | null = null;
-    function loop(ts: number) {
-      if (startTime === null) startTime = ts;
-      const elapsed = ts - startTime;
-      draw(elapsed);
-      // restart
-      if (elapsed > totalBars * 380 + 900) {
-        startTime = ts;
-      }
       frameRef.current = requestAnimationFrame(loop);
     }
 
@@ -335,13 +311,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* LOGO BRIDGE — chart fills background, logo sits centered on top */}
+        {/* LOGO BRIDGE — transparent positioning bridge only, no chart here */}
         <div className="logo-bridge">
-          {/* Chart fills the background of this zone */}
-          <div className="logo-chart-bg">
-            <TradingChart />
-          </div>
-          {/* Logo sits centered on top */}
           <div className="logo-wrapper">
             <a
               href={TELEGRAM_LINK}
@@ -417,6 +388,7 @@ export default function App() {
             }}
           />
 
+          {/* FEATURE LIST */}
           <div
             className="feature-list"
             style={{
@@ -473,11 +445,20 @@ export default function App() {
             ))}
           </div>
 
+          {/* ANIMATED TRADING CHART — between features and CTA */}
+          <div
+            className={`chart-section fade-up ${visible ? "fade-up-in" : ""}`}
+            style={{ animationDelay: "0.72s" }}
+          >
+            <TradingChart />
+          </div>
+
+          {/* CTA SECTION */}
           <div
             className={`cta-section fade-up ${visible ? "fade-up-in" : ""}`}
             style={{
               textAlign: "center",
-              animationDelay: "0.75s",
+              animationDelay: "0.82s",
               position: "relative",
               zIndex: 2,
             }}
